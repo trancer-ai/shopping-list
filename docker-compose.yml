@@ -1,13 +1,24 @@
+version: "3.9"
+
 services:
   shoppinglist:
-    build: .
+    image: ghcr.io/trancer-ai/shopping-list:latest
     container_name: shoppinglist
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3000
       - DB_PATH=/data/app.db
-    ports:
-      - "3000:3000"
     volumes:
       - /share/Container/shopping-list:/data
+    networks:
+      - external_net
+    # No ports published — access only via reverse proxy
+    # If you want LAN access as well, uncomment below:
+    # ports:
+    #   - "3000:3000"
+
+networks:
+  external_net:
+    external: true
+    name: External
