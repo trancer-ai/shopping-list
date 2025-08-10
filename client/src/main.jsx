@@ -3,21 +3,18 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './styles.css'
 
-// ADD: queue replay
+// replay queued writes on load and when back online
 import { replayQueue } from './api'
+replayQueue();
+window.addEventListener('online', () => replayQueue());
 
-// Render the app
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 )
 
-// ADD: run replay on boot and when back online
-replayQueue();
-window.addEventListener('online', () => replayQueue());
-
-// Register service worker
+// register service worker (served as /sw.js from public/)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});

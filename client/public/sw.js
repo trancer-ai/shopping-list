@@ -1,3 +1,5 @@
+// Cache app shell so it opens offline.
+// Note: Vite copies /public to the root of the built site.
 const CACHE = 'shopping-list-v1';
 const APP_ASSETS = ['/', '/index.html', '/manifest.webmanifest'];
 
@@ -19,10 +21,10 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Network-first for API; cache-first for everything else
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
     return;
   }
-
   event.respondWith(caches.match(event.request).then(c => c || fetch(event.request)));
 });
