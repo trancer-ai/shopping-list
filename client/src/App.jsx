@@ -1,6 +1,40 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { getItems, addItem, updateItem, deleteItem } from './api.js';
 
+// --- floating status badge (only offline) ---
+function OnlineBadge() {
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
+
+  if (online) return null; // hide when online
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      padding: '4px 10px',
+      borderRadius: 8,
+      fontSize: 12,
+      background: '#ffe9e9',
+      color: '#8a0000',
+      border: '1px solid #f4c9c9',
+      zIndex: 1000
+    }}>
+      Offline
+    </div>
+  );
+}
+
 export default function App() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +89,8 @@ export default function App() {
   const remaining = useMemo(() => items.filter(i => !i.isChecked).length, [items]);
 
   return (
-    <div className="container">
+    <div className="container" style={{ position: 'relative' }}>
+      <OnlineBadge />
       <header>
         <h1>Shopping List</h1>
         <p>{remaining} item(s) remaining</p>
