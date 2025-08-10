@@ -1,0 +1,16 @@
+services:
+  shoppinglist:
+    build: .
+    container_name: shoppinglist
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/data/app.db
+    ports:
+      - "3000:3000"
+    volumes:
+      - shoppinglist_data:/data
+
+volumes:
+  shoppinglist_data:
