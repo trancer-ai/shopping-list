@@ -1,21 +1,16 @@
+// client/src/db.js
 import { openDB } from 'idb';
 
-// DB with two stores:
-// - items: local cache for UI
-// - queue: offline write operations to replay later
+// One store: items (keyed by id)
 const dbPromise = openDB('shopping-list', 1, {
   upgrade(db) {
     if (!db.objectStoreNames.contains('items')) {
       const items = db.createObjectStore('items', { keyPath: 'id' });
       items.createIndex('byUpdatedAt', 'updatedAt');
     }
-    if (!db.objectStoreNames.contains('queue')) {
-      db.createObjectStore('queue', { keyPath: 'qid', autoIncrement: true });
-    }
   }
 });
 
-// ----- items cache -----
 export async function cacheReplaceAllItems(items) {
   const db = await dbPromise;
   const tx = db.transaction('items', 'readwrite');
@@ -36,23 +31,7 @@ export async function cacheDeleteItem(id) {
 
 export async function cacheGetAllItems() {
   const db = await dbPromise;
-  return db.getAll('items');
-}
-
-// ----- offline queue -----
-export async function queueAdd(op) {
-  const db = await dbPromise;
-  return db.add('queue', { ...op, ts: Date.now() });
-}
-
-export async function queueGetAll() {
-  const db = await dbPromise;
-  return db.getAll('queue');
-}
-
-export async function queueClear() {
-  const db = await dbPromise;
-  const tx = db.transaction('queue', 'readwrite');
-  await tx.store.clear();
-  await tx.done;
+  // Return newest first (helps recent sort if you need it offline)
+  const all = await db.getAll('items');
+  return all.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
 }

@@ -1,11 +1,23 @@
-# node & build
+# Node
 node_modules/
 client/node_modules/
 server/node_modules/
-client/dist/
-server/public/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# local data & env
-server/data/
-*.env
+# macOS
 .DS_Store
+
+# Builds
+dist/
+client/dist/
+
+# Environment & local data
+server/.env
+server/data/*.db
+server/data/*.sqlite
+server/data/*.sqlite3
+
+# Vite cache
+client/.vite/

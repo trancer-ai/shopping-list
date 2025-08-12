@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "reset": "rm -f data/app.db && node server.js",
     "start": "node server.js"
   },
   "dependencies": {
