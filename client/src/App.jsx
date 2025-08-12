@@ -2,14 +2,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { getItems, addItem, updateItem, deleteItem, replayQueue } from './api.js';
 
 const CATS = [
-  { key: 'F&V', color: '#2ecc71' },
-  { key: 'Meat', color: '#e74c3c' },
-  { key: 'Deli', color: '#f39c12' },
-  { key: 'Bakery', color: '#d35400' },
-  { key: 'General Food', color: '#3498db' },
-  { key: 'Personal', color: '#9b59b6' },
-  { key: 'Cleaning', color: '#16a085' },
-  { key: 'Cold Things', color: '#1abc9c' },
+  { key: 'F&V', color: '#1fc422' },
+  { key: 'Meat', color: '#c20e0e' },
+  { key: 'Deli', color: '#e67074' },
+  { key: 'Bakery', color: '#deb159' },
+  { key: 'General Food', color: '#f0ec0a' },
+  { key: 'Personal', color: '#ca34db' },
+  { key: 'Cleaning', color: '#051ced' },
+  { key: 'Cold Things', color: '#05c3ed' },
 ];
 
 const DEFAULT_CAT = 'General Food';
@@ -202,8 +202,8 @@ export default function App() {
                 fontSize: 12,
                 color: '#fff',
                 background: KEY_TO_COLOR[item.category] || '#999'
-              }}>
-                {item.category?.[0] || '·'}
+              }} aria-label={item.category}>
+                <span className="cat-icon" aria-hidden="true" />
               </span>
               <span className="name">{item.name}</span>
               {item.qty && <span className="meta"> · {item.qty}</span>}
