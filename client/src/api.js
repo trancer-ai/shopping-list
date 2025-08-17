@@ -106,54 +106,62 @@ export async function deleteItem(id) {
   return true;
 }
 
+let isReplaying = false;
+
 export async function replayQueue() {
-  let q = loadQueue();
-  if (!q.length) return;
+  if (isReplaying) return;        // prevent concurrent replays
+  isReplaying = true;
+  try {
+    let q = loadQueue();
+    if (!q.length) return;
 
-  const next = [];
-  const idMap = {}; // tempId -> realId
+    const next = [];
+    const idMap = {}; // tempId -> realId
 
-  for (const job of q) {
-    if (job.type === 'POST') {
-      let created;
-      try {
-        created = await http('POST', job.path, job.body);
-      } catch {
-        next.push(job); // only requeue if HTTP failed
-        continue;
-      }
-      if (job.tempId) {
-        idMap[job.tempId] = created.id;
-        try { await cacheDeleteItem(job.tempId); } catch {}
-      }
-      try { await cacheUpsertItem(created); } catch {}
-    } else if (job.type === 'PATCH') {
-      const origId = Number(job.path.split('/').pop());
-      const realId = idMap[origId] ?? origId;
-      const path = realId !== origId ? `/api/items/${realId}` : job.path;
+    for (const job of q) {
+      if (job.type === 'POST') {
+        let created;
+        try {
+          created = await http('POST', job.path, job.body);
+        } catch {
+          next.push(job); // only requeue if HTTP failed
+          continue;
+        }
+        if (job.tempId) {
+          idMap[job.tempId] = created.id;
+          try { await cacheDeleteItem(job.tempId); } catch {}
+        }
+        try { await cacheUpsertItem(created); } catch {}
+      } else if (job.type === 'PATCH') {
+        const origId = Number(job.path.split('/').pop());
+        const realId = idMap[origId] ?? origId;
+        const path = realId !== origId ? `/api/items/${realId}` : job.path;
 
-      let updated;
-      try {
-        updated = await http('PATCH', path, job.body);
-      } catch {
-        next.push({ ...job, path });
-        continue;
-      }
-      try { await cacheUpsertItem(updated); } catch {}
-    } else if (job.type === 'DELETE') {
-      const origId = Number(job.path.split('/').pop());
-      const realId = idMap[origId] ?? origId;
-      const path = realId !== origId ? `/api/items/${realId}` : job.path;
+        let updated;
+        try {
+          updated = await http('PATCH', path, job.body);
+        } catch {
+          next.push({ ...job, path });
+          continue;
+        }
+        try { await cacheUpsertItem(updated); } catch {}
+      } else if (job.type === 'DELETE') {
+        const origId = Number(job.path.split('/').pop());
+        const realId = idMap[origId] ?? origId;
+        const path = realId !== origId ? `/api/items/${realId}` : job.path;
 
-      try {
-        await http('DELETE', path);
-      } catch {
-        next.push({ ...job, path });
-        continue;
+        try {
+          await http('DELETE', path);
+        } catch {
+          next.push({ ...job, path });
+          continue;
+        }
+        try { await cacheDeleteItem(realId); } catch {}
       }
-      try { await cacheDeleteItem(realId); } catch {}
     }
-  }
 
-  saveQueue(next);
+    saveQueue(next);
+  } finally {
+    isReplaying = false;
+  }
 }
