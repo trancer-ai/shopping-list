@@ -3,7 +3,8 @@ import {
   cacheReplaceAllItems,
   cacheUpsertItem,
   cacheDeleteItem,
-  cacheGetAllItems
+  cacheGetAllItems,
+  cacheGetItem
 } from './db.js';
 
 const API_BASE = ''; // same origin
@@ -91,7 +92,9 @@ export async function updateItem(id, patch) {
     await cacheUpsertItem(updated);
     return updated;
   } catch {
-    const optimistic = { id, ...patch, updatedAt: new Date().toISOString() };
+    // Offline: merge patch into existing cached item to avoid losing fields
+    const existing = await cacheGetItem(id);
+    const optimistic = { ...(existing || { id }), ...patch, id, updatedAt: new Date().toISOString() };
     enqueue({ type: 'PATCH', path: `/api/items/${id}`, body: patch });
     await cacheUpsertItem(optimistic);
     return optimistic;

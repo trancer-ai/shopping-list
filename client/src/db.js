@@ -29,6 +29,12 @@ export async function cacheDeleteItem(id) {
   await db.delete('items', id);
 }
 
+// NEW: fetch a single item (used to merge offline patches)
+export async function cacheGetItem(id) {
+  const db = await dbPromise;
+  return db.get('items', id);
+}
+
 export async function cacheGetAllItems() {
   const db = await dbPromise;
   // Return newest first (helps recent sort if you need it offline)
