@@ -111,45 +111,49 @@ export async function replayQueue() {
   if (!q.length) return;
 
   const next = [];
-  const idMap = {}; // tempId -> real id
+  const idMap = {}; // tempId -> realId
 
   for (const job of q) {
-    try {
-      if (job.type === 'POST') {
-        const created = await http('POST', job.path, job.body);
-        if (job.tempId) {
-          idMap[job.tempId] = created.id;
-          await cacheDeleteItem(job.tempId);   // remove temp item to avoid duplicates
-        }
-        await cacheUpsertItem(created);
-      } else if (job.type === 'PATCH') {
-        const origId = Number(job.path.split('/').pop());
-        const realId = idMap[origId] ?? origId;
-        const path = realId !== origId ? `/api/items/${realId}` : job.path;
-        const updated = await http('PATCH', path, job.body);
-        await cacheUpsertItem(updated);
-      } else if (job.type === 'DELETE') {
-        const origId = Number(job.path.split('/').pop());
-        const realId = idMap[origId] ?? origId;
-        const path = realId !== origId ? `/api/items/${realId}` : job.path;
-        await http('DELETE', path);
-        await cacheDeleteItem(realId);
+    if (job.type === 'POST') {
+      let created;
+      try {
+        created = await http('POST', job.path, job.body);
+      } catch {
+        next.push(job); // only requeue if HTTP failed
+        continue;
       }
-    } catch {
-      next.push(job); // keep failing jobs
+      if (job.tempId) {
+        idMap[job.tempId] = created.id;
+        try { await cacheDeleteItem(job.tempId); } catch {}
+      }
+      try { await cacheUpsertItem(created); } catch {}
+    } else if (job.type === 'PATCH') {
+      const origId = Number(job.path.split('/').pop());
+      const realId = idMap[origId] ?? origId;
+      const path = realId !== origId ? `/api/items/${realId}` : job.path;
+
+      let updated;
+      try {
+        updated = await http('PATCH', path, job.body);
+      } catch {
+        next.push({ ...job, path });
+        continue;
+      }
+      try { await cacheUpsertItem(updated); } catch {}
+    } else if (job.type === 'DELETE') {
+      const origId = Number(job.path.split('/').pop());
+      const realId = idMap[origId] ?? origId;
+      const path = realId !== origId ? `/api/items/${realId}` : job.path;
+
+      try {
+        await http('DELETE', path);
+      } catch {
+        next.push({ ...job, path });
+        continue;
+      }
+      try { await cacheDeleteItem(realId); } catch {}
     }
   }
 
-  // If any jobs failed and referenced a temp id, rewrite them to the real id we learned above
-  if (Object.keys(idMap).length) {
-    for (const j of next) {
-      if (!j.path) continue;
-      const jid = Number(j.path.split('/').pop());
-      if (idMap[jid]) {
-        j.path = `/api/items/${idMap[jid]}`;
-        delete j.tempId;
-      }
-    }
-  }
   saveQueue(next);
 }
