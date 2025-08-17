@@ -29,6 +29,9 @@ function pruneQueueForId(id) {
   });
   if (next.length !== q.length) saveQueue(next);
 }
+export function getQueueLength() {
+  return loadQueue().length;
+}
 
 // ------------- HTTP helper -------------
 async function http(method, path, body) {
@@ -102,18 +105,17 @@ export async function deleteItem(id) {
     enqueue({ type: 'DELETE', path: `/api/items/${id}` });
   }
   await cacheDeleteItem(id);
-  if (id < 0) pruneQueueForId(id); // remove queued ops for temp items
+  if (id < 0) pruneQueueForId(id);
   return true;
 }
 
 let isReplaying = false;
-
 export async function replayQueue() {
-  if (isReplaying) return;        // prevent concurrent replays
+  if (isReplaying) return getQueueLength();
   isReplaying = true;
   try {
     let q = loadQueue();
-    if (!q.length) return;
+    if (!q.length) return 0;
 
     const next = [];
     const idMap = {}; // tempId -> realId
@@ -124,7 +126,7 @@ export async function replayQueue() {
         try {
           created = await http('POST', job.path, job.body);
         } catch {
-          next.push(job); // only requeue if HTTP failed
+          next.push(job);
           continue;
         }
         if (job.tempId) {
@@ -136,31 +138,27 @@ export async function replayQueue() {
         const origId = Number(job.path.split('/').pop());
         const realId = idMap[origId] ?? origId;
         const path = realId !== origId ? `/api/items/${realId}` : job.path;
-
-        let updated;
         try {
-          updated = await http('PATCH', path, job.body);
+          const updated = await http('PATCH', path, job.body);
+          try { await cacheUpsertItem(updated); } catch {}
         } catch {
           next.push({ ...job, path });
-          continue;
         }
-        try { await cacheUpsertItem(updated); } catch {}
       } else if (job.type === 'DELETE') {
         const origId = Number(job.path.split('/').pop());
         const realId = idMap[origId] ?? origId;
         const path = realId !== origId ? `/api/items/${realId}` : job.path;
-
         try {
           await http('DELETE', path);
+          try { await cacheDeleteItem(realId); } catch {}
         } catch {
           next.push({ ...job, path });
-          continue;
         }
-        try { await cacheDeleteItem(realId); } catch {}
       }
     }
 
     saveQueue(next);
+    return next.length;
   } finally {
     isReplaying = false;
   }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { getItems, addItem, updateItem, deleteItem, replayQueue } from './api.js';
+import { getItems, addItem, updateItem, deleteItem, replayQueue, getQueueLength } from './api.js';
 
 const CATS = [
   { key: 'F&V', color: '#1fc422' },
@@ -54,18 +54,23 @@ export default function App() {
   useEffect(() => {
     function goOffline() {
       setStatus('Offline Mode');
-      setStatusColor('#c62828'); // red
+      setStatusColor('#c62828');
     }
     async function goOnline() {
       try {
-        await replayQueue();     // flush queued writes
-        await refresh();         // pull server truth
-        setStatus('Online (Synchronized)');
-        setStatusColor('#2e7d32'); // green
+        const remaining = await replayQueue(); // flush queued writes
+        if (remaining === 0) {
+          await refresh();                     // only refresh when fully flushed
+          setStatus('Online (Synchronized)');
+          setStatusColor('#2e7d32');
+        } else {
+          setStatus('Online (Sync Pending)');
+          setStatusColor('#ef6c00');
+        }
         setTimeout(() => setStatus(''), 3000);
       } catch {
         setStatus('Online (Sync Pending)');
-        setStatusColor('#ef6c00'); // orange
+        setStatusColor('#ef6c00');
         setTimeout(() => setStatus(''), 4000);
       }
     }
@@ -115,14 +120,18 @@ export default function App() {
   }
 
   async function manualSync() {
-    pushHistory(); // allow undoing the sync
     try {
-      await replayQueue();
-      await refresh();
-      setStatus('Online (Manual Sync)');
-      setStatusColor('#2e7d32');
+      const remaining = await replayQueue();
+      if (remaining === 0) {
+        await refresh();
+        setStatus('Online (Manual Sync)');
+        setStatusColor('#2e7d32');
+      } else {
+        setStatus('Sync Pending');
+        setStatusColor('#ef6c00');
+      }
       setTimeout(() => setStatus(''), 3000);
-    } catch (e) {
+    } catch {
       setStatus('Sync failed');
       setStatusColor('#ef6c00');
       setTimeout(() => setStatus(''), 3000);
