@@ -111,21 +111,44 @@ export async function replayQueue() {
   if (!q.length) return;
 
   const next = [];
+  const idMap = {}; // tempId -> real id
+
   for (const job of q) {
     try {
       if (job.type === 'POST') {
         const created = await http('POST', job.path, job.body);
+        if (job.tempId) {
+          idMap[job.tempId] = created.id;
+          await cacheDeleteItem(job.tempId);   // remove temp item to avoid duplicates
+        }
         await cacheUpsertItem(created);
       } else if (job.type === 'PATCH') {
-        const updated = await http('PATCH', job.path, job.body);
+        const origId = Number(job.path.split('/').pop());
+        const realId = idMap[origId] ?? origId;
+        const path = realId !== origId ? `/api/items/${realId}` : job.path;
+        const updated = await http('PATCH', path, job.body);
         await cacheUpsertItem(updated);
       } else if (job.type === 'DELETE') {
-        await http('DELETE', job.path);
-        const id = Number(job.path.split('/').pop());
-        await cacheDeleteItem(id);
+        const origId = Number(job.path.split('/').pop());
+        const realId = idMap[origId] ?? origId;
+        const path = realId !== origId ? `/api/items/${realId}` : job.path;
+        await http('DELETE', path);
+        await cacheDeleteItem(realId);
       }
     } catch {
-      next.push(job);
+      next.push(job); // keep failing jobs
+    }
+  }
+
+  // If any jobs failed and referenced a temp id, rewrite them to the real id we learned above
+  if (Object.keys(idMap).length) {
+    for (const j of next) {
+      if (!j.path) continue;
+      const jid = Number(j.path.split('/').pop());
+      if (idMap[jid]) {
+        j.path = `/api/items/${idMap[jid]}`;
+        delete j.tempId;
+      }
     }
   }
   saveQueue(next);
