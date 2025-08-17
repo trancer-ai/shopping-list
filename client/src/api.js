@@ -20,6 +20,15 @@ function enqueue(op) {
   q.push({ ...op, enqueuedAt: Date.now() });
   saveQueue(q);
 }
+function pruneQueueForId(id) {
+  const q = loadQueue();
+  const next = q.filter(job => {
+    if (job.tempId === id) return false;
+    if (typeof job.path === 'string' && job.path.endsWith(`/api/items/${id}`)) return false;
+    return true;
+  });
+  if (next.length !== q.length) saveQueue(next);
+}
 
 // ------------- HTTP helper -------------
 async function http(method, path, body) {
@@ -42,11 +51,9 @@ export async function getItems(listId = 'default', sort = 'category') {
   const params = new URLSearchParams({ sort });
   try {
     const data = await http('GET', `/api/lists/${encodeURIComponent(listId)}/items?${params}`);
-    // keep cache in sync for offline cold starts
     await cacheReplaceAllItems(data);
     return data;
   } catch {
-    // offline (or server down): fall back to last cached list
     return cacheGetAllItems();
   }
 }
@@ -57,7 +64,6 @@ export async function addItem(item) {
     await cacheUpsertItem(created);
     return created;
   } catch {
-    // Offline: optimistic temp item + queue
     const tempId = -Date.now();
     const temp = {
       id: tempId,
@@ -82,7 +88,6 @@ export async function updateItem(id, patch) {
     await cacheUpsertItem(updated);
     return updated;
   } catch {
-    // Optimistic local update
     const optimistic = { id, ...patch, updatedAt: new Date().toISOString() };
     enqueue({ type: 'PATCH', path: `/api/items/${id}`, body: patch });
     await cacheUpsertItem(optimistic);
@@ -97,6 +102,7 @@ export async function deleteItem(id) {
     enqueue({ type: 'DELETE', path: `/api/items/${id}` });
   }
   await cacheDeleteItem(id);
+  if (id < 0) pruneQueueForId(id); // remove queued ops for temp items
   return true;
 }
 
@@ -118,11 +124,8 @@ export async function replayQueue() {
         const id = Number(job.path.split('/').pop());
         await cacheDeleteItem(id);
       }
-      // success: drop
     } catch {
-      next.push(job); // still failing, keep it
-      // Optionally break here to avoid hammering
-      // break;
+      next.push(job);
     }
   }
   saveQueue(next);

@@ -22,9 +22,17 @@ export default function App() {
   const [form, setForm] = useState({ name: '', qty: '', note: '', category: DEFAULT_CAT });
   const [sort, setSort] = useState('category'); // 'category' | 'alpha' | 'recent' | '' (manual)
 
-  // ✅ status badge state
+  // status badge
   const [status, setStatus] = useState(navigator.onLine ? '' : 'Offline Mode');
   const [statusColor, setStatusColor] = useState(navigator.onLine ? '' : '#c62828'); // red
+
+  // history for Undo (store last few snapshots)
+  const [history, setHistory] = useState([]);
+
+  function pushHistory() {
+    // shallow copy items for snapshot
+    setHistory(h => [items.map(i => ({ ...i })), ...h].slice(0, 5));
+  }
 
   async function refresh() {
     try {
@@ -42,7 +50,7 @@ export default function App() {
   // initial + on sort change
   useEffect(() => { refresh(); }, [sort]);
 
-  // ✅ online/offline listeners + sync on reconnect
+  // online/offline listeners + sync on reconnect
   useEffect(() => {
     function goOffline() {
       setStatus('Offline Mode');
@@ -54,9 +62,8 @@ export default function App() {
         await refresh();         // pull server truth
         setStatus('Online (Synchronized)');
         setStatusColor('#2e7d32'); // green
-        setTimeout(() => setStatus(''), 3000); // fade after 3s
+        setTimeout(() => setStatus(''), 3000);
       } catch {
-        // If something failed, still show we're online but not synced
         setStatus('Online (Sync Pending)');
         setStatusColor('#ef6c00'); // orange
         setTimeout(() => setStatus(''), 4000);
@@ -74,28 +81,31 @@ export default function App() {
   async function onAdd(e) {
     e.preventDefault();
     if (!form.name.trim()) return;
+    pushHistory();
     await addItem({ ...form, listId: 'default' });
-    await refresh(); // respect current sort and reconcile optimistic items
+    await refresh();
     setForm({ name: '', qty: '', note: '', category: DEFAULT_CAT });
   }
 
   async function toggleChecked(item) {
+    pushHistory();
     await updateItem(item.id, { isChecked: !item.isChecked });
     await refresh();
   }
 
   async function remove(id) {
+    pushHistory();
     await deleteItem(id);
     await refresh();
   }
 
   async function move(item, delta) {
-    // only meaningful when using manual order (sort == '')
-    if (sort) return;
+    if (sort) return; // only meaningful when using manual order (sort == '')
     const idx = items.findIndex(i => i.id === item.id);
     const newIdx = Math.max(0, Math.min(items.length - 1, idx + delta));
     if (newIdx === idx) return;
 
+    pushHistory();
     const newList = items.slice();
     newList.splice(idx, 1);
     newList.splice(newIdx, 0, item);
@@ -104,11 +114,90 @@ export default function App() {
     await refresh();
   }
 
+  async function manualSync() {
+    pushHistory(); // allow undoing the sync
+    try {
+      await replayQueue();
+      await refresh();
+      setStatus('Online (Manual Sync)');
+      setStatusColor('#2e7d32');
+      setTimeout(() => setStatus(''), 3000);
+    } catch (e) {
+      setStatus('Sync failed');
+      setStatusColor('#ef6c00');
+      setTimeout(() => setStatus(''), 3000);
+    }
+  }
+
+  async function undoLast() {
+    const prev = history[0];
+    if (!prev) return;
+    setHistory(h => h.slice(1));
+
+    const prevById = new Map(prev.map(i => [i.id, i]));
+    const currById = new Map(items.map(i => [i.id, i]));
+    const ops = [];
+
+    for (const [id, prevItem] of prevById) {
+      const curr = currById.get(id);
+      if (!curr) continue;
+      const patch = {};
+      if (curr.name !== prevItem.name) patch.name = prevItem.name;
+      if (curr.qty !== prevItem.qty) patch.qty = prevItem.qty;
+      if (curr.note !== prevItem.note) patch.note = prevItem.note;
+      if (curr.category !== prevItem.category) patch.category = prevItem.category;
+      if (curr.isChecked !== prevItem.isChecked) patch.isChecked = prevItem.isChecked;
+      if (curr.position !== prevItem.position) patch.position = prevItem.position;
+      if (Object.keys(patch).length) ops.push(() => updateItem(id, patch));
+    }
+
+    for (const [id] of currById) {
+      if (!prevById.has(id)) ops.push(() => deleteItem(id));
+    }
+
+    for (const [id, prevItem] of prevById) {
+      if (currById.has(id)) continue;
+      const body = {
+        listId: prevItem.listId || 'default',
+        name: prevItem.name,
+        qty: prevItem.qty,
+        note: prevItem.note,
+        category: prevItem.category
+      };
+      ops.push(() => addItem(body));
+    }
+
+    for (const fn of ops) await fn();
+    await refresh();
+
+    // Toast: Undone
+    setStatus('Undone');
+    setStatusColor('#2e7d32');
+    setTimeout(() => setStatus(''), 2000);
+  }
+
+  async function deleteChecked() {
+    const ids = items.filter(i => i.isChecked).map(i => i.id);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} checked item(s)?`)) return;
+    pushHistory();
+    await Promise.all(ids.map(id => deleteItem(id)));
+    await refresh();
+  }
+
+  async function deleteAll() {
+    if (!items.length) return;
+    if (!confirm('Delete all items?')) return;
+    pushHistory();
+    await Promise.all(items.map(i => deleteItem(i.id)));
+    await refresh();
+  }
+
   const remaining = useMemo(() => items.filter(i => !i.isChecked).length, [items]);
+  const hasChecked = useMemo(() => items.some(i => i.isChecked), [items]);
 
   return (
     <div className="container">
-      {/* ✅ status badge */}
       {status && (
         <div
           style={{
@@ -132,17 +221,21 @@ export default function App() {
         <h1>Shopping List</h1>
         <p>{remaining} item(s) remaining</p>
 
-        <div className="row" style={{ marginLeft: 'auto', maxWidth: 380 }}>
-          <label style={{ fontSize: 14, alignSelf: 'center' }}>Sort:&nbsp;</label>
-          <select
-            value={sort}
-            onChange={e => setSort(e.target.value)}
-          >
+        <div className="row" style={{ marginLeft: 'auto', maxWidth: 620, alignItems: 'center' }}>
+          <label style={{ fontSize: 14 }}>Sort:&nbsp;</label>
+          <select value={sort} onChange={e => setSort(e.target.value)}>
             <option value="category">By category</option>
             <option value="alpha">Alphabetical</option>
             <option value="recent">Most recent</option>
             <option value="">Manual (position)</option>
           </select>
+
+          <div className="actions" style={{ marginLeft: 'auto' }}>
+            <button onClick={manualSync} aria-label="Sync now">⟳ Sync</button>
+            <button onClick={undoLast} disabled={!history.length} aria-label="Undo last">↶ Undo</button>
+            <button onClick={deleteChecked} disabled={!hasChecked} aria-label="Delete checked">🗑︎ Checked</button>
+            <button onClick={deleteAll} disabled={!items.length} aria-label="Delete all">🗑︎ All</button>
+          </div>
         </div>
       </header>
 
