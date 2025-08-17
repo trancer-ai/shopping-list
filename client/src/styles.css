@@ -2,8 +2,13 @@
 body { margin: 0; background: #f6f7f9; color: #111; }
 .container { max-width: 720px; margin: 0 auto; padding: 16px; }
 header { display: flex; align-items: baseline; gap: 12px; }
+/* NEW: allow header to wrap on small screens */
+header { flex-wrap: wrap; }
 .card { background: #fff; padding: 12px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin: 12px 0; }
 .row { display: flex; gap: 8px; margin-bottom: 8px; }
+/* NEW: let rows wrap and prevent overflow from children */
+.row { flex-wrap: wrap; }
+.row > * { min-width: 0; }
 input { flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; }
 button { padding: 8px 12px; border: 0; background: #111; color: #fff; border-radius: 8px; cursor: pointer; }
 .list { list-style: none; padding: 0; margin: 0; }
@@ -13,6 +18,11 @@ button { padding: 8px 12px; border: 0; background: #111; color: #fff; border-rad
 .meta { color: #666; font-size: .9em; }
 .actions button { background: transparent; color: #333; border: 1px solid #ddd; }
 .actions { display: flex; gap: 6px; }
+/* NEW: header toolbar responsiveness (does not affect item actions) */
+header .actions { flex-wrap: wrap; }
+@media (max-width: 480px) {
+  header .actions { width: 100%; justify-content: flex-start; }
+}
 .error { color: #b00020; }
 .cat-badge {
     display: inline-block;
@@ -31,13 +41,15 @@ button { padding: 8px 12px; border: 0; background: #111; color: #fff; border-rad
       height: 14px;
       display: inline-block;
     }
-  /* Prevent iOS Safari zoom on focus by ensuring form controls are at least 16px */
-  input, select, textarea {
-    font-size: 16px;
-  }
-  select {
-    padding: 10px 12px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    background: #fff;
-  }  
+/* Prevent iOS Safari zoom on focus by ensuring form controls are at least 16px */
+input, select, textarea {
+  font-size: 16px;
+}
+select {
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+}
+/* NEW: avoid any accidental horizontal scrolling */
+body, .container { overflow-x: hidden; }
