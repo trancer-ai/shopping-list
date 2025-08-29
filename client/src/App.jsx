@@ -10,7 +10,7 @@ const CATS = [
   { key: 'Personal', color: '#ca34db' },
   { key: 'Cleaning', color: '#051ced' },
   { key: 'Cold Things', color: '#05c3ed' },
-  { key: 'Utilities', color: '#e53935' },
+  { key: 'Utilities', color: '#440201ff' },
 ];
 
 const DEFAULT_CAT = 'General Food';
