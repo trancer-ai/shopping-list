@@ -2,7 +2,7 @@
 import Database from 'better-sqlite3';
 
 export const CATEGORIES = [
-  'F&V', 'Meat', 'Deli', 'Bakery', 'General Food', 'Personal', 'Cleaning', 'Cold Things'
+  'F&V', 'Meat', 'Deli', 'Bakery', 'General Food', 'Personal', 'Cleaning', 'Cold Things', 'Utilities'
 ];
 export const isValidCategory = (c) => CATEGORIES.includes(c);
 

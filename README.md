@@ -10,7 +10,9 @@ A simple, fast, **offline-capable** shopping list web app with category sorting,
 - **Category tags** (F&V, Meat, Deli, Bakery, etc.) with colour coding
 - Sort by **Category**, **Alphabetical**, **Most Recent**, or **Manual** order
 - **Offline mode** (PWA + local IndexedDB cache)
-- Automatic sync when reconnected (queued changes replay)
+- Robust sync with queued POST/PATCH/DELETE and safe replay
+- Manual sync button with status indicators (e.g., Sync Pending)
+- Undo last change (best-effort, local history)
 - Backend API with SQLite database
 - Docker & Docker Compose support
 - Ready for GitHub Actions CI/CD with GHCR image publishing
@@ -77,6 +79,21 @@ npm run dev            # starts on http://localhost:5173
 docker-compose up --build
 ```
 The app will be available at http://localhost:5173
+
+---
+
+## 🔄 Offline & Sync
+
+- Queueing: When offline, write operations (add/update/delete) are queued locally and applied to the IndexedDB cache for instant UI feedback.
+- Patch merge offline: Offline updates merge patches into the cached item so untouched fields are preserved (prevents accidental data loss).
+- Replay on reconnect: On network recovery, the app replays the queue to the server.
+  - Temporary IDs from offline adds are remapped to real IDs to avoid duplicates.
+  - Deletions and updates target the remapped IDs where applicable.
+- Refresh policy: The list refreshes automatically only when the queue is fully flushed to prevent items from “disappearing/reappearing” during sync.
+- Status & manual sync: The UI shows sync status (e.g., Online (Synchronized) or Sync Pending) and includes a Sync button to trigger replay.
+- Diagnostics: `getQueueLength()` is available in the client API for surfacing sync state in the UI if desired.
+
+These changes improve reliability when switching between online/offline and ensure edits are preserved without creating duplicate items.
 
 ---
 

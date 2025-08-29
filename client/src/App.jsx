@@ -10,10 +10,26 @@ const CATS = [
   { key: 'Personal', color: '#ca34db' },
   { key: 'Cleaning', color: '#051ced' },
   { key: 'Cold Things', color: '#05c3ed' },
+  { key: 'Utilities', color: '#e53935' },
 ];
 
 const DEFAULT_CAT = 'General Food';
 const KEY_TO_COLOR = Object.fromEntries(CATS.map(c => [c.key, c.color]));
+
+// Pick readable text color (black/white) given a hex background
+function getContrastColor(hex) {
+  try {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.substring(0, 2), 16);
+    const g = parseInt(h.substring(2, 4), 16);
+    const b = parseInt(h.substring(4, 6), 16);
+    // YIQ formula for perceived brightness
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 160 ? '#111' : '#fff';
+  } catch {
+    return '#fff';
+  }
+}
 
 export default function App() {
   const [items, setItems] = useState([]);
@@ -277,7 +293,15 @@ export default function App() {
           >
             {CATS.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
           </select>
-          <button type="submit">Add</button>
+          <button
+            type="submit"
+            style={{
+              background: KEY_TO_COLOR[form.category] || '#111',
+              color: getContrastColor(KEY_TO_COLOR[form.category] || '#111')
+            }}
+          >
+            Add
+          </button>
         </div>
       </form>
 
