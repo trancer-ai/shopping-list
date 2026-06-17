@@ -1,6 +1,8 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS households (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -18,8 +20,7 @@ CREATE TABLE IF NOT EXISTS household_members (
   PRIMARY KEY (household_id, user_id)
 );
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
+-- id is supplied by the client (UUID), not generated here
 CREATE TABLE IF NOT EXISTS items (
   id UUID PRIMARY KEY,
   household_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
