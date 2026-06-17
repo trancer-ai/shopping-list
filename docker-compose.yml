@@ -30,10 +30,6 @@ services:
       - shoppinglist-db-data:/var/lib/postgresql/data
     networks:
       - external_net
-    # TEMPORARY: exposed for one-time SQLite -> Postgres data migration.
-    # Remove this once migrateFromSqlite.js has been run.
-    ports:
-      - "5432:5432"
 
 networks:
   external_net:
