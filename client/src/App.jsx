@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { getItems, addItem, updateItem, deleteItem, replayQueue, getQueueLength } from './api.js';
+import { connectLiveUpdates } from './ws.js';
 
 const CATS = [
   { key: 'F&V', color: '#1fc422' },
@@ -97,6 +98,24 @@ export default function App() {
       window.removeEventListener('offline', goOffline);
       window.removeEventListener('online', goOnline);
     };
+  }, []);
+
+  // live updates from other clients via WebSocket
+  useEffect(() => {
+    const disconnect = connectLiveUpdates((msg) => {
+      if (msg.type === 'item.created' || msg.type === 'item.updated') {
+        setItems((prev) => {
+          const idx = prev.findIndex((i) => i.id === msg.item.id);
+          if (idx === -1) return [...prev, msg.item];
+          const next = prev.slice();
+          next[idx] = msg.item;
+          return next;
+        });
+      } else if (msg.type === 'item.deleted') {
+        setItems((prev) => prev.filter((i) => i.id !== msg.id));
+      }
+    });
+    return disconnect;
   }, []);
 
   async function onAdd(e) {

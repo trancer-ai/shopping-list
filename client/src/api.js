@@ -10,6 +10,9 @@ import {
 const API_BASE = ''; // same origin
 const QUEUE_KEY = 'sl.queue.v1';
 
+function newId() { return crypto.randomUUID(); }
+function newOperationId() { return crypto.randomUUID(); }
+
 // ------------- queue (localStorage) -------------
 function loadQueue() {
   try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); }
@@ -20,15 +23,6 @@ function enqueue(op) {
   const q = loadQueue();
   q.push({ ...op, enqueuedAt: Date.now() });
   saveQueue(q);
-}
-function pruneQueueForId(id) {
-  const q = loadQueue();
-  const next = q.filter(job => {
-    if (job.tempId === id) return false;
-    if (typeof job.path === 'string' && job.path.endsWith(`/api/items/${id}`)) return false;
-    return true;
-  });
-  if (next.length !== q.length) saveQueue(next);
 }
 export function getQueueLength() {
   return loadQueue().length;
@@ -41,6 +35,13 @@ async function http(method, path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 409) {
+    const data = await res.json().catch(() => ({}));
+    const err = new Error('version conflict');
+    err.conflict = true;
+    err.current = data.item;
+    throw err;
+  }
   if (!res.ok) {
     const msg = await res.text().catch(() => res.statusText);
     throw new Error(msg || `HTTP ${res.status}`);
@@ -63,52 +64,61 @@ export async function getItems(listId = 'default', sort = 'category') {
 }
 
 export async function addItem(item) {
+  const id = newId();
+  const operationId = newOperationId();
+  const body = { id, operationId, name: item.name, qty: item.qty, note: item.note, category: item.category };
+  const optimistic = {
+    id,
+    name: item.name.trim(),
+    qty: item.qty || '',
+    note: item.note || '',
+    category: item.category || 'General Food',
+    isChecked: false,
+    position: 999999,
+    version: 1,
+    updatedAt: new Date().toISOString(),
+  };
   try {
-    const created = await http('POST', `/api/items`, item);
+    const created = await http('POST', '/api/items', body);
     await cacheUpsertItem(created);
     return created;
   } catch {
-    const tempId = -Date.now();
-    const temp = {
-      id: tempId,
-      listId: item.listId || 'default',
-      name: item.name.trim(),
-      qty: item.qty || '',
-      note: item.note || '',
-      category: item.category || 'General Food',
-      isChecked: false,
-      position: 999999,
-      updatedAt: new Date().toISOString(),
-    };
-    enqueue({ type: 'POST', path: '/api/items', body: item, tempId });
-    await cacheUpsertItem(temp);
-    return temp;
+    enqueue({ type: 'POST', path: '/api/items', body });
+    await cacheUpsertItem(optimistic);
+    return optimistic;
   }
 }
 
 export async function updateItem(id, patch) {
+  const operationId = newOperationId();
+  const existing = await cacheGetItem(id);
+  const expectedVersion = existing?.version ?? 1;
+  const body = { ...patch, operationId, version: expectedVersion };
   try {
-    const updated = await http('PATCH', `/api/items/${id}`, patch);
+    const updated = await http('PATCH', `/api/items/${id}`, body);
     await cacheUpsertItem(updated);
     return updated;
-  } catch {
-    // Offline: merge patch into existing cached item to avoid losing fields
-    const existing = await cacheGetItem(id);
+  } catch (err) {
+    if (err.conflict) {
+      // Server has a newer version; trust it and surface it to the caller.
+      await cacheUpsertItem(err.current);
+      return err.current;
+    }
     const optimistic = { ...(existing || { id }), ...patch, id, updatedAt: new Date().toISOString() };
-    enqueue({ type: 'PATCH', path: `/api/items/${id}`, body: patch });
+    enqueue({ type: 'PATCH', path: `/api/items/${id}`, body });
     await cacheUpsertItem(optimistic);
     return optimistic;
   }
 }
 
 export async function deleteItem(id) {
+  const operationId = newOperationId();
   try {
-    await http('DELETE', `/api/items/${id}`);
+    await http('DELETE', `/api/items/${id}`, { operationId });
   } catch {
-    enqueue({ type: 'DELETE', path: `/api/items/${id}` });
+    enqueue({ type: 'DELETE', path: `/api/items/${id}`, body: { operationId } });
   }
   await cacheDeleteItem(id);
-  if (id < 0) pruneQueueForId(id);
   return true;
 }
 
@@ -117,46 +127,28 @@ export async function replayQueue() {
   if (isReplaying) return getQueueLength();
   isReplaying = true;
   try {
-    let q = loadQueue();
+    const q = loadQueue();
     if (!q.length) return 0;
 
     const next = [];
-    const idMap = {}; // tempId -> realId
-
     for (const job of q) {
-      if (job.type === 'POST') {
-        let created;
-        try {
-          created = await http('POST', job.path, job.body);
-        } catch {
-          next.push(job);
+      try {
+        if (job.type === 'POST') {
+          const created = await http('POST', job.path, job.body);
+          await cacheUpsertItem(created);
+        } else if (job.type === 'PATCH') {
+          const updated = await http('PATCH', job.path, job.body);
+          await cacheUpsertItem(updated);
+        } else if (job.type === 'DELETE') {
+          await http('DELETE', job.path, job.body);
+        }
+      } catch (err) {
+        if (err.conflict) {
+          // Operation is resolved (server told us the current state); don't requeue.
+          await cacheUpsertItem(err.current);
           continue;
         }
-        if (job.tempId) {
-          idMap[job.tempId] = created.id;
-          try { await cacheDeleteItem(job.tempId); } catch {}
-        }
-        try { await cacheUpsertItem(created); } catch {}
-      } else if (job.type === 'PATCH') {
-        const origId = Number(job.path.split('/').pop());
-        const realId = idMap[origId] ?? origId;
-        const path = realId !== origId ? `/api/items/${realId}` : job.path;
-        try {
-          const updated = await http('PATCH', path, job.body);
-          try { await cacheUpsertItem(updated); } catch {}
-        } catch {
-          next.push({ ...job, path });
-        }
-      } else if (job.type === 'DELETE') {
-        const origId = Number(job.path.split('/').pop());
-        const realId = idMap[origId] ?? origId;
-        const path = realId !== origId ? `/api/items/${realId}` : job.path;
-        try {
-          await http('DELETE', path);
-          try { await cacheDeleteItem(realId); } catch {}
-        } catch {
-          next.push({ ...job, path });
-        }
+        next.push(job);
       }
     }
 

@@ -21,3 +21,6 @@ server/data/*.sqlite3
 
 # Vite cache
 client/.vite/
+
+# Local context/design notes
+.context/

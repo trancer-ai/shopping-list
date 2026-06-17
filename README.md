@@ -1,6 +1,6 @@
 # 🛒 Shopping List App
 
-A simple, fast, **offline-capable** shopping list web app with category sorting, PWA support, and optional multi-device sync via a Node.js + SQLite backend.
+A simple, fast, **offline-capable** shopping list web app with category sorting, PWA support, and optional multi-device sync via a Node.js + PostgreSQL backend.
 
 ---
 
@@ -13,7 +13,7 @@ A simple, fast, **offline-capable** shopping list web app with category sorting,
 - Robust sync with queued POST/PATCH/DELETE and safe replay
 - Manual sync button with status indicators (e.g., Sync Pending)
 - Undo last change (best-effort, local history)
-- Backend API with SQLite database
+- Backend API with PostgreSQL database
 - Docker & Docker Compose support
 - Ready for GitHub Actions CI/CD with GHCR image publishing
 
@@ -29,10 +29,15 @@ shopping-list/
 │  ├─ package.json
 │  └─ vite.config.js
 │
-├─ server/                 # Backend (Express + better-sqlite3)
-│  ├─ data/                # SQLite DB storage (ignored by Git)
-│  ├─ server.js            # API routes & startup
-│  ├─ db.js                # Database schema & helpers
+├─ server/                 # Backend (Express + PostgreSQL)
+│  ├─ src/
+│  │  ├─ db/               # Schema, connection pool, migration runner
+│  │  ├─ repositories/     # Data access (SQL lives here only)
+│  │  ├─ services/         # Business logic: idempotency, version conflicts
+│  │  ├─ realtime/         # WebSocket broadcaster
+│  │  └─ routes/           # Express routes
+│  ├─ scripts/             # One-time scripts (e.g. SQLite → Postgres migration)
+│  ├─ server.js            # Entrypoint: wires everything together
 │  ├─ package.json
 │  └─ .env.example
 │
@@ -74,26 +79,31 @@ npm run dev            # starts on http://localhost:5173
 
 ---
 
-## 🐳 Run with Docker
+## 🐳 Run with Docker Compose
 ```bash
 docker-compose up --build
 ```
-The app will be available at http://localhost:5173
+The app will be available at http://localhost:5173. This brings up both the frontend and the PostgreSQL database — no separate database setup needed.
+
+To fully reset the database (remove all data and volumes):
+```bash
+docker-compose down -v
+```
 
 ---
 
 ## 🔄 Offline & Sync
 
 - Queueing: When offline, write operations (add/update/delete) are queued locally and applied to the IndexedDB cache for instant UI feedback.
-- Patch merge offline: Offline updates merge patches into the cached item so untouched fields are preserved (prevents accidental data loss).
-- Replay on reconnect: On network recovery, the app replays the queue to the server.
-  - Temporary IDs from offline adds are remapped to real IDs to avoid duplicates.
-  - Deletions and updates target the remapped IDs where applicable.
+- Permanent client-generated IDs: every item gets a UUID and an idempotency key (`operationId`) at creation time, on the client. There's no temporary ID or server-side remapping — replaying a queued operation twice is safe because the server recognizes the repeated `operationId` and returns the original result instead of applying it again.
+- Optimistic concurrency: updates carry the `version` the client last saw. If another client changed the item first, the server rejects the update (HTTP 409) with the current item instead of silently overwriting it.
+- Replay on reconnect: On network recovery, the app replays the queue to the server, then does one reconciling fetch, then resumes listening for live updates over WebSocket.
+- Live updates: connected clients receive other clients' changes over WebSocket without needing to refresh.
 - Refresh policy: The list refreshes automatically only when the queue is fully flushed to prevent items from “disappearing/reappearing” during sync.
 - Status & manual sync: The UI shows sync status (e.g., Online (Synchronized) or Sync Pending) and includes a Sync button to trigger replay.
 - Diagnostics: `getQueueLength()` is available in the client API for surfacing sync state in the UI if desired.
 
-These changes improve reliability when switching between online/offline and ensure edits are preserved without creating duplicate items.
+These changes improve reliability for concurrent, multi-device use and ensure edits are preserved without creating duplicate items.
 
 ---
 
