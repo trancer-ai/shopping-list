@@ -22,15 +22,13 @@
     
     ENV NODE_ENV=production
     ENV PORT=3000
-    ENV DB_PATH=/data/app.db
-    
+
     # Copy built server (with public assets)
     COPY --from=builder /app/server /app/server
-    
+
     # Install only production deps for server
     RUN npm --prefix server ci --omit=dev
-    
-    VOLUME ["/data"]
+
     EXPOSE 3000
     
     CMD ["node", "server/server.js"]    

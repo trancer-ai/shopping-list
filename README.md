@@ -1,6 +1,6 @@
 # 🛒 Shopping List App
 
-A simple, fast, **offline-capable** shopping list web app with category sorting, PWA support, and optional multi-device sync via a Node.js + SQLite backend.
+A simple, fast, **offline-capable** shopping list web app with category sorting, PWA support, and optional multi-device sync via a Node.js + PostgreSQL backend.
 
 ---
 
@@ -13,7 +13,7 @@ A simple, fast, **offline-capable** shopping list web app with category sorting,
 - Robust sync with queued POST/PATCH/DELETE and safe replay
 - Manual sync button with status indicators (e.g., Sync Pending)
 - Undo last change (best-effort, local history)
-- Backend API with SQLite database
+- Backend API with PostgreSQL database
 - Docker & Docker Compose support
 - Ready for GitHub Actions CI/CD with GHCR image publishing
 
@@ -29,8 +29,8 @@ shopping-list/
 │  ├─ package.json
 │  └─ vite.config.js
 │
-├─ server/                 # Backend (Express + better-sqlite3)
-│  ├─ data/                # SQLite DB storage (ignored by Git)
+├─ server/                 # Backend (Express + PostgreSQL)
+│  ├─ migrations/          # Database migrations (ignored by Git)
 │  ├─ server.js            # API routes & startup
 │  ├─ db.js                # Database schema & helpers
 │  ├─ package.json
@@ -74,11 +74,16 @@ npm run dev            # starts on http://localhost:5173
 
 ---
 
-## 🐳 Run with Docker
+## 🐳 Run with Docker Compose
 ```bash
 docker-compose up --build
 ```
-The app will be available at http://localhost:5173
+The app will be available at http://localhost:5173. This brings up both the frontend and the PostgreSQL database — no separate database setup needed.
+
+To fully reset the database (remove all data and volumes):
+```bash
+docker-compose down -v
+```
 
 ---
 
