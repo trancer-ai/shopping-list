@@ -5,12 +5,12 @@ services:
     image: ghcr.io/trancer-ai/shopping-list:latest
     container_name: shoppinglist
     restart: unless-stopped
+    depends_on:
+      - postgres
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DB_PATH=/data/app.db
-    volumes:
-      - /share/Container/shopping-list:/data
+      - DATABASE_URL=postgres://shoppinglist:shoppinglist@postgres:5432/shoppinglist
     networks:
       - external_net
     # No ports published — access only via reverse proxy
@@ -18,7 +18,23 @@ services:
     # ports:
     #   - "3000:3000"
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: shoppinglist-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=shoppinglist
+      - POSTGRES_PASSWORD=shoppinglist
+      - POSTGRES_DB=shoppinglist
+    volumes:
+      - shoppinglist-db-data:/var/lib/postgresql/data
+    networks:
+      - external_net
+
 networks:
   external_net:
     external: true
     name: External
+
+volumes:
+  shoppinglist-db-data:
