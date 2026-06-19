@@ -38,3 +38,15 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS idx_items_household ON items(household_id);
 CREATE INDEX IF NOT EXISTS idx_items_household_position ON items(household_id, position);
 CREATE INDEX IF NOT EXISTS idx_items_updated ON items(updated_at);
+
+-- Household-scoped: different households may label the same product
+-- differently. Only ever written when a user confirms adding a scanned
+-- item (see itemsRoutes.js), never on a raw lookup.
+CREATE TABLE IF NOT EXISTS barcode_products (
+  household_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  barcode TEXT NOT NULL,
+  name TEXT NOT NULL,
+  category TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (household_id, barcode)
+);
