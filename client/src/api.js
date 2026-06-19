@@ -63,10 +63,19 @@ export async function getItems(listId = 'default', sort = 'category') {
   }
 }
 
+export async function lookupBarcode(barcode) {
+  try {
+    return await http('GET', `/api/barcodes/${encodeURIComponent(barcode)}`);
+  } catch {
+    return { found: false, name: null, category: null, source: null };
+  }
+}
+
 export async function addItem(item) {
   const id = newId();
   const operationId = newOperationId();
   const body = { id, operationId, name: item.name, qty: item.qty, note: item.note, category: item.category };
+  if (item.barcode) body.barcode = item.barcode;
   const optimistic = {
     id,
     name: item.name.trim(),
