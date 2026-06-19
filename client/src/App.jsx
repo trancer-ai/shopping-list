@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { getItems, addItem, updateItem, deleteItem, replayQueue, getQueueLength } from './api.js';
+import { getItems, addItem, updateItem, deleteItem, replayQueue, getQueueLength, lookupBarcode } from './api.js';
 import { connectLiveUpdates } from './ws.js';
+import BarcodeScanner from './BarcodeScanner.jsx';
 
 const CATS = [
   { key: 'F&V', color: '#1fc422' },
@@ -37,6 +38,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ name: '', qty: '', note: '', category: DEFAULT_CAT });
+  const [scanning, setScanning] = useState(false);
+  const [scanForm, setScanForm] = useState(null); // null = no confirm dialog open
   const [sort, setSort] = useState('category'); // 'category' | 'alpha' | 'recent' | '' (manual)
 
   // status badge
@@ -125,6 +128,30 @@ export default function App() {
     await addItem({ ...form, listId: 'default' });
     await refresh();
     setForm({ name: '', qty: '', note: '', category: DEFAULT_CAT });
+  }
+
+  async function onBarcodeDetected(code) {
+    setScanning(false);
+    const lookup = await lookupBarcode(code);
+    const category = CATS.some(c => c.key === lookup.category) ? lookup.category : DEFAULT_CAT;
+    setScanForm({ barcode: code, name: lookup.name || '', qty: '', note: '', category });
+  }
+
+  function onCancelScan() {
+    setScanning(false);
+  }
+
+  async function onConfirmScan(e) {
+    e.preventDefault();
+    if (!scanForm.name.trim()) return;
+    pushHistory();
+    await addItem({ ...scanForm, listId: 'default' });
+    await refresh();
+    setScanForm(null);
+  }
+
+  function onCancelConfirm() {
+    setScanForm(null);
   }
 
   async function toggleChecked(item) {
@@ -275,6 +302,7 @@ export default function App() {
           </select>
 
           <div className="actions" style={{ marginLeft: 'auto' }}>
+            <button onClick={() => setScanning(true)} aria-label="Scan barcode">📷 Scan</button>
             <button onClick={manualSync} aria-label="Sync now">⟳ Sync</button>
             <button onClick={undoLast} disabled={!history.length} aria-label="Undo last">↶ Undo</button>
             <button onClick={deleteChecked} disabled={!hasChecked} aria-label="Delete checked">🗑︎ Checked</button>
@@ -363,6 +391,59 @@ export default function App() {
           </li>
         ))}
       </ul>
+
+      {scanning && (
+        <BarcodeScanner onDetected={onBarcodeDetected} onCancel={onCancelScan} />
+      )}
+
+      {scanForm && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,.5)',
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <form onSubmit={onConfirmScan} className="card" style={{ background: '#fff', maxWidth: 360, width: '90%' }}>
+            <h2>Confirm item</h2>
+            <div className="row">
+              <input
+                placeholder="Item name"
+                value={scanForm.name}
+                onChange={e => setScanForm({ ...scanForm, name: e.target.value })}
+                required
+              />
+            </div>
+            <div className="row">
+              <input
+                placeholder="Qty (optional)"
+                value={scanForm.qty}
+                onChange={e => setScanForm({ ...scanForm, qty: e.target.value })}
+              />
+              <input
+                placeholder="Note (optional)"
+                value={scanForm.note}
+                onChange={e => setScanForm({ ...scanForm, note: e.target.value })}
+              />
+            </div>
+            <div className="row">
+              <select
+                value={scanForm.category}
+                onChange={e => setScanForm({ ...scanForm, category: e.target.value })}
+                aria-label="Category"
+              >
+                {CATS.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
+              </select>
+              <button type="submit">Add</button>
+              <button type="button" onClick={onCancelConfirm}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
