@@ -21,7 +21,13 @@ export function createItemsRouter({ itemsService, broadcaster, defaultHouseholdI
       id, householdId: defaultHouseholdId, name, qty, note, category
     });
     if (barcode) {
-      await barcodeRepository.upsert(defaultHouseholdId, barcode, result.item.name, result.item.category, result.item.note);
+      // Caching the scanned mapping is a convenience, not part of the create's
+      // success contract - a failure here must not fail an otherwise-successful add.
+      try {
+        await barcodeRepository.upsert(defaultHouseholdId, barcode, result.item.name, result.item.category, result.item.note);
+      } catch (err) {
+        console.error('Failed to cache barcode mapping', { barcode, error: err.message });
+      }
     }
     broadcaster.broadcast(defaultHouseholdId, { type: 'item.created', item: result.item });
     res.json(result.item);
