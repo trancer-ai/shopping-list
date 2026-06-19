@@ -13,6 +13,10 @@ import { createIdempotencyStore } from './src/services/idempotencyStore.js';
 import { createItemsService } from './src/services/itemsService.js';
 import { createBroadcaster } from './src/realtime/broadcaster.js';
 import { createItemsRouter } from './src/routes/itemsRoutes.js';
+import { createBarcodeRepository } from './src/repositories/barcodeRepository.js';
+import { createBarcodeService } from './src/services/barcodeService.js';
+import { createBarcodeRouter } from './src/routes/barcodeRoutes.js';
+import { lookupProduct } from './src/integrations/openFoodFacts.js';
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
@@ -28,6 +32,8 @@ const itemsRepository = createItemsRepository(pool);
 const idempotencyStore = createIdempotencyStore();
 const itemsService = createItemsService(itemsRepository, idempotencyStore);
 const broadcaster = createBroadcaster();
+const barcodeRepository = createBarcodeRepository(pool);
+const barcodeService = createBarcodeService(barcodeRepository, lookupProduct);
 
 const app = express();
 app.use(morgan('dev'));
@@ -37,7 +43,8 @@ if (NODE_ENV !== 'production' && CORS_ORIGIN) {
 }
 
 app.get('/api/health', (_, res) => res.json({ ok: true }));
-app.use(createItemsRouter({ itemsService, broadcaster, defaultHouseholdId }));
+app.use(createItemsRouter({ itemsService, broadcaster, defaultHouseholdId, barcodeRepository }));
+app.use(createBarcodeRouter({ barcodeService, defaultHouseholdId }));
 
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));

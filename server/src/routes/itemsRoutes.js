@@ -3,7 +3,7 @@ import express from 'express';
 // Single-household mode today: every request is attached to the one
 // seeded household. When real accounts are added, this becomes
 // req.householdId derived from the authenticated session instead.
-export function createItemsRouter({ itemsService, broadcaster, defaultHouseholdId }) {
+export function createItemsRouter({ itemsService, broadcaster, defaultHouseholdId, barcodeRepository }) {
   const router = express.Router();
 
   router.get('/api/lists/:listId/items', async (req, res) => {
@@ -13,13 +13,16 @@ export function createItemsRouter({ itemsService, broadcaster, defaultHouseholdI
   });
 
   router.post('/api/items', async (req, res) => {
-    const { id, name, qty, note, category, operationId } = req.body || {};
+    const { id, name, qty, note, category, operationId, barcode } = req.body || {};
     if (!id || !name || !operationId) {
       return res.status(400).json({ error: 'id, name and operationId are required' });
     }
     const result = await itemsService.createItem(operationId, {
       id, householdId: defaultHouseholdId, name, qty, note, category
     });
+    if (barcode) {
+      await barcodeRepository.upsert(defaultHouseholdId, barcode, result.item.name, result.item.category);
+    }
     broadcaster.broadcast(defaultHouseholdId, { type: 'item.created', item: result.item });
     res.json(result.item);
   });
