@@ -1,19 +1,21 @@
 # 🛒 Shopping List App
 
-A simple, fast, **offline-capable** shopping list web app with category sorting, PWA support, and optional multi-device sync via a Node.js + PostgreSQL backend.
+A simple, fast, **offline-capable** shopping list web app with category sorting, PWA support, household-scoped multi-device sync, and barcode scanning — backed by a Node.js + PostgreSQL backend with live WebSocket updates.
 
 ---
 
 ## ✨ Features
 
 - **Add, update, delete** shopping list items
+- **📷 Barcode scanning**: scan a product with your phone's camera to prefill name, category and pack size before adding (see [Barcode Scanning](#-barcode-scanning) below)
 - **Category tags** (F&V, Meat, Deli, Bakery, etc.) with colour coding
 - Sort by **Category**, **Alphabetical**, **Most Recent**, or **Manual** order
 - **Offline mode** (PWA + local IndexedDB cache)
 - Robust sync with queued POST/PATCH/DELETE and safe replay
+- **Live updates**: other connected devices see your changes instantly over WebSocket, no refresh needed
 - Manual sync button with status indicators (e.g., Sync Pending)
 - Undo last change (best-effort, local history)
-- Backend API with PostgreSQL database
+- Household-scoped backend (PostgreSQL) — built for multi-device/multi-person use; no login UI yet, but the data model is already user/household-aware
 - Docker & Docker Compose support
 - Ready for GitHub Actions CI/CD with GHCR image publishing
 
@@ -25,7 +27,13 @@ A simple, fast, **offline-capable** shopping list web app with category sorting,
 shopping-list/
 ├─ client/                 # Frontend (Vite + React)
 │  ├─ public/              # Service worker, manifest, PWA icons
-│  ├─ src/                 # React components, styles, API & IndexedDB logic
+│  ├─ src/
+│  │  ├─ App.jsx            # UI, local state, undo/history, sort, reorder
+│  │  ├─ BarcodeScanner.jsx # Camera barcode decoding (@zxing/browser)
+│  │  ├─ api.js             # HTTP client, offline queue, idempotency keys
+│  │  ├─ ws.js               # WebSocket client for live updates
+│  │  ├─ db.js               # IndexedDB cache
+│  │  └─ main.jsx            # Bootstraps queue replay + SW registration
 │  ├─ package.json
 │  └─ vite.config.js
 │
@@ -33,7 +41,8 @@ shopping-list/
 │  ├─ src/
 │  │  ├─ db/               # Schema, connection pool, migration runner
 │  │  ├─ repositories/     # Data access (SQL lives here only)
-│  │  ├─ services/         # Business logic: idempotency, version conflicts
+│  │  ├─ services/         # Business logic: idempotency, version conflicts, barcode lookup
+│  │  ├─ integrations/     # External API wrappers (Open Food Facts)
 │  │  ├─ realtime/         # WebSocket broadcaster
 │  │  └─ routes/           # Express routes
 │  ├─ scripts/             # One-time scripts (e.g. SQLite → Postgres migration)
@@ -41,8 +50,8 @@ shopping-list/
 │  ├─ package.json
 │  └─ .env.example
 │
-├─ docker-compose.yml      # Multi-container stack (frontend + backend)
-├─ Dockerfile              # Build container for deployment
+├─ docker-compose.yml      # Multi-container stack (app + Postgres)
+├─ Dockerfile              # Build container for deployment (client + server in one image)
 ├─ .github/workflows/      # Optional GitHub Actions CI/CD
 ├─ .gitignore
 └─ README.md
@@ -83,7 +92,9 @@ npm run dev            # starts on http://localhost:5173
 ```bash
 docker-compose up --build
 ```
-The app will be available at http://localhost:5173. This brings up both the frontend and the PostgreSQL database — no separate database setup needed.
+This builds one image (the client is built and served as static files by the Express server, on the same port) and brings up Postgres alongside it — no separate database setup needed.
+
+By default, `docker-compose.yml` publishes **no ports** — it's meant to sit behind a reverse proxy on a shared Docker network (see `external_net` in the compose file). For local/LAN access without a proxy, uncomment the `ports: - "3000:3000"` line under the `shoppinglist` service, then the app is available at `http://localhost:3000` (or `http://<your-LAN-IP>:3000` from another device). Camera-based barcode scanning requires HTTPS (a secure context) — see [Barcode Scanning](#-barcode-scanning) below.
 
 To fully reset the database (remove all data and volumes):
 ```bash
@@ -104,6 +115,26 @@ docker-compose down -v
 - Diagnostics: `getQueueLength()` is available in the client API for surfacing sync state in the UI if desired.
 
 These changes improve reliability for concurrent, multi-device use and ensure edits are preserved without creating duplicate items.
+
+---
+
+## 👥 Households & real-time updates
+
+The backend is household-scoped: every item belongs to a household, and `users`/`household_members` tables already exist in the schema (nullable, unused today) so real accounts can be turned on later without a data migration. Today there's a single implicit household and no login UI.
+
+Every write broadcasts over WebSocket (`/ws`, same port as the HTTP API) to other clients connected to that household, so changes from one device appear on others without a manual refresh. The client auto-reconnects on disconnect.
+
+---
+
+## 📷 Barcode Scanning
+
+Tap **Scan** to open the camera, point it at a product barcode, and the app prefills a confirmation dialog (name, category, pack size, qty, note) before adding the item — letting you correct or fill in anything before it's saved.
+
+- Decoding happens entirely in the browser (`@zxing/browser`), so it works offline; only the **lookup** of what the barcode means needs a network call.
+- Lookup order: your household's own previously-confirmed scans first (instant, no network call), then [Open Food Facts](https://world.openfoodfacts.org/) (a free, open product database) as a fallback.
+- **Cache-on-confirm**: a barcode → product mapping is only saved to your household's shared history when you actually confirm adding the item — never on a raw lookup. This keeps the cache self-cleaning (only ever contains products a real person reviewed and approved) and means a correction you make in the dialog (e.g. shortening a long public-database name) is what's remembered next time, not the original public name.
+- Requires a secure context (HTTPS, or `localhost`) — camera access is blocked by the browser otherwise.
+- If camera access is denied or fails, the app falls back to a message and the normal manual add-item form still works.
 
 ---
 
