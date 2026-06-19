@@ -21,7 +21,7 @@ export function createItemsRouter({ itemsService, broadcaster, defaultHouseholdI
       id, householdId: defaultHouseholdId, name, qty, note, category
     });
     if (barcode) {
-      await barcodeRepository.upsert(defaultHouseholdId, barcode, result.item.name, result.item.category);
+      await barcodeRepository.upsert(defaultHouseholdId, barcode, result.item.name, result.item.category, result.item.note);
     }
     broadcaster.broadcast(defaultHouseholdId, { type: 'item.created', item: result.item });
     res.json(result.item);

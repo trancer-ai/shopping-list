@@ -67,7 +67,7 @@ export async function lookupBarcode(barcode) {
   try {
     return await http('GET', `/api/barcodes/${encodeURIComponent(barcode)}`);
   } catch {
-    return { found: false, name: null, category: null, source: null };
+    return { found: false, name: null, category: null, note: null, source: null };
   }
 }
 

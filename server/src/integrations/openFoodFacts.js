@@ -9,10 +9,17 @@ export async function lookupProduct(barcode) {
     if (!res.ok) return null;
 
     const data = await res.json();
-    const name = data?.product?.product_name;
-    if (data?.status !== 1 || !name) return null;
+    const productName = data?.product?.product_name;
+    if (data?.status !== 1 || !productName) return null;
 
-    return { name, category: null };
+    // `brands` is free text and correctly cased/accented; `brands_tags` is
+    // normalized only for brands OFF recognizes in its taxonomy, so it mixes
+    // lowercased and original-case entries unpredictably - not safe to display.
+    const brand = data?.product?.brands?.split(',')[0]?.trim() || null;
+    const alreadyHasBrand = brand && productName.toLowerCase().startsWith(brand.toLowerCase());
+    const name = brand && !alreadyHasBrand ? `${brand} ${productName}` : productName;
+
+    return { name, category: null, note: data?.product?.quantity || null };
   } catch {
     return null;
   }

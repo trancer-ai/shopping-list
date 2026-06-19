@@ -134,7 +134,7 @@ export default function App() {
     setScanning(false);
     const lookup = await lookupBarcode(code);
     const category = CATS.some(c => c.key === lookup.category) ? lookup.category : DEFAULT_CAT;
-    setScanForm({ barcode: code, name: lookup.name || '', qty: '', note: '', category });
+    setScanForm({ barcode: code, name: lookup.name || '', qty: '', note: lookup.note || '', category });
   }
 
   function onCancelScan() {

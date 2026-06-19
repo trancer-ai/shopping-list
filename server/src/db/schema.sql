@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS barcode_products (
   barcode TEXT NOT NULL,
   name TEXT NOT NULL,
   category TEXT,
+  note TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (household_id, barcode)
 );
