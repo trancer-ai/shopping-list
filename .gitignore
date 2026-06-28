@@ -15,9 +15,12 @@ client/dist/
 
 # Environment & local data
 server/.env
+server/data/.env
 server/data/*.db
 server/data/*.sqlite
 server/data/*.sqlite3
+server/data/*.db-shm
+server/data/*.db-wal
 
 # Vite cache
 client/.vite/
